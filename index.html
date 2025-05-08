@@ -86,7 +86,7 @@
 
         /* 타임라인 영역 */
         .timeline {
-            height: 200px;
+            height: 250px;
             background-color: #2d2d2d;
             padding: 20px;
             overflow: hidden;
@@ -173,7 +173,7 @@
         }
 
         .timeline-track {
-            height: 50px;
+            height: 70px;
             background-color: #3d3d3d;
             margin-bottom: 10px;
             border-radius: 3px;
@@ -186,19 +186,21 @@
         }
 
         .timeline-clip {
-            height: 80%;
-            background-color: #28a745;
-            border-radius: 3px;
+            height: 100%;
+            background-color: #FF5722;
+            border-radius: 5px;
             position: relative;
             min-width: 100px;
             cursor: move;
             display: flex;
             align-items: center;
-            padding: 2px;
+            /* padding: 2px; */
             overflow: hidden;
             user-select: none;
             transition: transform 0.1s ease;
             margin-left: 0;
+            text-align: left;
+            border: solid 3px #ccc;
         }
 
         .timeline-clip.dragging {
@@ -227,8 +229,8 @@
             width: 100%;
             height: 100%;
             object-fit: contain;
-            border: solid 2px #333;
             border-radius: 2px;
+            object-position: left;
         }
 
         /* 파일 업로드 버튼 */
@@ -797,7 +799,7 @@
                 clip.className = 'timeline-clip';
                 clip.id = 'image-clip-' + imageId;
                 clip.draggable = false; // 기본 드래그 비활성화
-                clip.style.width = '1000px'; // 10초 = 1000px (100px/초)
+                clip.style.width = '500px'; // 10초 = 1000px (100px/초)
 
                 // 썸네일 이미지 생성
                 const thumbnail = document.createElement('img');
@@ -1101,7 +1103,8 @@
                     // 캔버스의 비디오만 재생
                     if (videoMesh && videoMesh.userData.element) {
                         const video = videoMesh.userData.element;
-                        const currentTime = (parseInt(document.querySelector('.timeline-playhead').style.left) - 50) / 100;
+                        const playhead = document.querySelector('.timeline-playhead');
+                        const currentTime = (parseInt(playhead.style.left || '50') - 50) / 100;
                         video.currentTime = currentTime;
                         video.play();
                     }
