@@ -226,7 +226,8 @@
         .timeline-clip-thumbnail {
             width: 100%;
             height: 100%;
-            object-fit: cover;
+            object-fit: contain;
+            border: solid 2px #333;
             border-radius: 2px;
         }
 
@@ -278,6 +279,19 @@
         #imageTrack {
             display: flex;
             gap: 0;
+        }
+
+        #imageLibrary {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        #imageLibrary img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border: 1px solid #fff;
         }
     </style>
 </head>
@@ -523,19 +537,137 @@
             return corners;
         }
 
+        // 플레이헤드 드래그 기능
+        function initPlayhead() {
+            const playhead = document.querySelector('.timeline-playhead');
+            const timeline = document.querySelector('.timeline');
+            let isDragging = false;
+            let startX;
+            let startLeft;
+
+            playhead.addEventListener('mousedown', (e) => {
+                isDragging = true;
+                startX = e.clientX;
+                startLeft = parseInt(playhead.style.left || '50');
+                e.preventDefault();
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isDragging) return;
+
+                const deltaX = e.clientX - startX;
+                const newLeft = Math.max(50, Math.min(startLeft + deltaX, timeline.clientWidth - 50));
+                playhead.style.left = `${newLeft}px`;
+
+                // 현재 시간 계산 (초 단위)
+                const currentTime = (newLeft - 50) / 100; // 100px = 1초
+
+                // 비디오 시간 업데이트
+                if (videoMesh && videoMesh.userData.element) {
+                    const video = videoMesh.userData.element;
+                    video.currentTime = currentTime;
+                    // 크로마키 텍스처 강제 업데이트
+                    if (videoMesh.material.map) {
+                        videoMesh.material.map.needsUpdate = true;
+                    }
+                    // 비디오 일시정지 상태 유지
+                    if (!video.paused) {
+                        video.pause();
+                    }
+                }
+
+                // 이미지 가시성 업데이트
+                updateImageVisibility(currentTime);
+            });
+
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+        }
+
         // 비디오 메시 생성 함수
         function createVideoMesh(videoElement) {
-            // 기존 비디오 메시가 있다면 제거
             if (videoMesh) {
                 scene.remove(videoMesh);
                 videoMesh = null;
             }
 
+            // 크로마키 처리를 위한 캔버스 생성
+            const chromaCanvas = document.createElement('canvas');
+            const chromaCtx = chromaCanvas.getContext('2d', { willReadFrequently: true });
+            // 캔버스 크기를 비디오 크기에 맞게 설정
+            chromaCanvas.width = 640;  // 더 높은 해상도로 설정
+            chromaCanvas.height = 360;
+
             videoTexture = new THREE.VideoTexture(videoElement);
+            const chromaTexture = new THREE.CanvasTexture(chromaCanvas);
+            chromaTexture.minFilter = THREE.LinearFilter;
+            chromaTexture.magFilter = THREE.LinearFilter;
+            chromaTexture.needsUpdate = true;
+
+            let lastProcessedTime = 0;
+            const processInterval = 1000 / 30; // 30fps로 제한
+
+            // 크로마키 처리 함수
+            function processChromaKey() {
+                if (!videoElement.paused && !videoElement.ended) {
+                    const currentTime = performance.now();
+                    if (currentTime - lastProcessedTime < processInterval) {
+                        requestAnimationFrame(processChromaKey);
+                        return;
+                    }
+                    lastProcessedTime = currentTime;
+
+                    // 비디오 프레임을 캔버스에 그리기
+                    chromaCtx.drawImage(videoElement, 0, 0, chromaCanvas.width, chromaCanvas.height);
+
+                    // 프레임 데이터 가져오기
+                    const frame = chromaCtx.getImageData(0, 0, chromaCanvas.width, chromaCanvas.height);
+                    const data = frame.data;
+
+                    // 크로마키 처리 (녹색 배경 제거)
+                    for (let i = 0; i < data.length; i += 4) {
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+
+                        // 크로마키 색상 (R:0, G:141-255, B:66-100) 감지
+                        if (
+                            r < 40 &&           // 빨간색이 거의 없음
+                            g > 120 && g < 255 && // 녹색이 141-255 범위
+                            b > 50 && b < 110     // 파란색이 66-100 근처
+                        ) {
+                            // 부드러운 알파 블렌딩
+                            const distance = Math.sqrt(
+                                Math.pow(r - 0, 2) +
+                                Math.pow(g - 198, 2) + // 중간값 (141+255)/2
+                                Math.pow(b - 83, 2)    // 중간값 (66+100)/2
+                            );
+                            const threshold = 60; // 임계값 증가
+                            if (distance < threshold) {
+                                data[i + 3] = Math.floor((1 - distance / threshold) * 255);
+                            } else {
+                                data[i + 3] = 0;
+                            }
+                        }
+                    }
+
+                    // 처리된 프레임을 캔버스에 다시 그리기
+                    chromaCtx.putImageData(frame, 0, 0);
+                    chromaTexture.needsUpdate = true;
+                }
+                requestAnimationFrame(processChromaKey);
+            }
+
+            // 크로마키 처리 시작
+            processChromaKey();
+
             const geometry = new THREE.PlaneGeometry(16, 9);
             const material = new THREE.MeshBasicMaterial({
-                map: videoTexture,
-                side: THREE.DoubleSide
+                map: chromaTexture,
+                side: THREE.DoubleSide,
+                transparent: true,
+                alphaTest: 0.1
             });
             videoMesh = new THREE.Mesh(geometry, material);
             videoMesh.userData.type = 'video';
@@ -552,12 +684,32 @@
                     const playhead = document.querySelector('.timeline-playhead');
                     playhead.style.left = `${50 + videoElement.currentTime * 100}px`;
                 }
+                // 크로마키 텍스처 업데이트
+                chromaTexture.needsUpdate = true;
             });
 
             videoElement.addEventListener('ended', () => {
                 const playButton = document.querySelector('.play-button');
                 playButton.classList.remove('paused');
                 videoElement.pause();
+            });
+
+            videoElement.addEventListener('play', () => {
+                console.log('비디오 재생 시작');
+                // 재생 시작 시 크로마키 처리 시작
+                processChromaKey();
+            });
+
+            videoElement.addEventListener('pause', () => {
+                console.log('비디오 일시정지');
+                // 일시정지 시에도 마지막 프레임 유지
+                chromaTexture.needsUpdate = true;
+            });
+
+            videoElement.addEventListener('timeupdate', () => {
+                console.log('현재 시간:', videoElement.currentTime);
+                // 시간 업데이트 시 크로마키 텍스처 업데이트
+                chromaTexture.needsUpdate = true;
             });
         }
 
@@ -601,9 +753,17 @@
                 const videoElement = document.createElement('video');
                 videoElement.src = URL.createObjectURL(file);
                 videoElement.controls = true;
-                videoElement.autoplay = false; // 자동 재생 비활성화
+                videoElement.autoplay = false;
                 videoElement.loop = true;
                 videoElement.muted = true;
+                videoElement.preload = 'metadata';
+                videoElement.style.display = 'none'; // 비디오 요소 숨기기
+
+                // 파일명 표시를 위한 div 생성
+                const videoInfo = document.createElement('div');
+                videoInfo.className = 'library-item';
+                videoInfo.textContent = file.name; // 파일명 표시
+                videoLibrary.appendChild(videoInfo);
                 videoLibrary.appendChild(videoElement);
 
                 createVideoMesh(videoElement);
@@ -637,6 +797,7 @@
                 clip.className = 'timeline-clip';
                 clip.id = 'image-clip-' + imageId;
                 clip.draggable = false; // 기본 드래그 비활성화
+                clip.style.width = '1000px'; // 10초 = 1000px (100px/초)
 
                 // 썸네일 이미지 생성
                 const thumbnail = document.createElement('img');
@@ -876,38 +1037,6 @@
             }
         }
 
-        // 플레이헤드 드래그 기능
-        function initPlayhead() {
-            const playhead = document.querySelector('.timeline-playhead');
-            const timeline = document.querySelector('.timeline');
-            let isDragging = false;
-            let startX;
-            let startLeft;
-
-            playhead.addEventListener('mousedown', (e) => {
-                isDragging = true;
-                startX = e.clientX;
-                startLeft = parseInt(playhead.style.left || '50');
-                e.preventDefault();
-            });
-
-            document.addEventListener('mousemove', (e) => {
-                if (!isDragging) return;
-
-                const deltaX = e.clientX - startX;
-                const newLeft = Math.max(50, Math.min(startLeft + deltaX, timeline.clientWidth - 50));
-                playhead.style.left = `${newLeft}px`;
-
-                // 현재 시간 계산 (초 단위)
-                const currentTime = (newLeft - 50) / (timeline.clientWidth - 100) * 30; // 30초 기준
-                updateVideoTime(currentTime);
-            });
-
-            document.addEventListener('mouseup', () => {
-                isDragging = false;
-            });
-        }
-
         // 재생 컨트롤 초기화
         function initPlaybackControls() {
             const playButton = document.querySelector('.play-button');
@@ -918,7 +1047,15 @@
             function updateTimeline(currentTime) {
                 const playhead = document.querySelector('.timeline-playhead');
                 playhead.style.left = `${50 + currentTime * 100}px`;
-                updateVideoTime(currentTime);
+
+                // 비디오 시간 업데이트
+                if (videoMesh && videoMesh.userData.element) {
+                    const video = videoMesh.userData.element;
+                    video.currentTime = currentTime;
+                }
+
+                // 이미지 가시성 업데이트
+                updateImageVisibility(currentTime);
             }
 
             function animate(currentTime) {
@@ -953,6 +1090,7 @@
                     if (animationFrameId) {
                         cancelAnimationFrame(animationFrameId);
                     }
+                    // 캔버스의 비디오만 일시정지
                     if (videoMesh && videoMesh.userData.element) {
                         videoMesh.userData.element.pause();
                     }
@@ -960,25 +1098,16 @@
                     isPlaying = true;
                     playButton.classList.add('paused');
                     lastTime = performance.now();
+                    // 캔버스의 비디오만 재생
                     if (videoMesh && videoMesh.userData.element) {
                         const video = videoMesh.userData.element;
-                        video.currentTime = (parseInt(document.querySelector('.timeline-playhead').style.left) - 50) / 100;
+                        const currentTime = (parseInt(document.querySelector('.timeline-playhead').style.left) - 50) / 100;
+                        video.currentTime = currentTime;
                         video.play();
                     }
                     animationFrameId = requestAnimationFrame(animate);
                 }
             });
-        }
-
-        // 비디오 시간 업데이트
-        function updateVideoTime(time) {
-            if (videoMesh && videoMesh.userData.element) {
-                const video = videoMesh.userData.element;
-                video.currentTime = time;
-            }
-
-            // 이미지 가시성 업데이트
-            updateImageVisibility(time);
         }
 
         // 이미지 가시성 업데이트
