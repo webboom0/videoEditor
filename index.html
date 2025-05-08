@@ -828,6 +828,10 @@
             if (videoTexture) {
                 videoTexture.needsUpdate = true;
             }
+            // 현재 시간에 따른 이미지 가시성 업데이트
+            const playhead = document.querySelector('.timeline-playhead');
+            const currentTime = (parseInt(playhead.style.left || '50') - 50) / 100;
+            updateImageVisibility(currentTime);
             renderer.render(scene, camera);
         }
         animate();
@@ -1107,6 +1111,8 @@
                         const currentTime = (parseInt(playhead.style.left || '50') - 50) / 100;
                         video.currentTime = currentTime;
                         video.play();
+                        // 이미지 가시성 업데이트
+                        updateImageVisibility(currentTime);
                     }
                     animationFrameId = requestAnimationFrame(animate);
                 }
