@@ -1,0 +1,20 @@
+{
+  "name": "video-editor",
+  "version": "1.0.0",
+  "description": "Video Editor Project",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "three": "^0.176.0"
+  },
+  "devDependencies": {
+    "vite": "^6.3.5"
+  }
+}
