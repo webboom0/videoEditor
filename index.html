@@ -476,8 +476,6 @@
 
             if (intersects.length > 0) {
                 currentMesh = intersects[0].object;
-                isDragging = true;
-                previousMousePosition = { x: event.clientX, y: event.clientY };
                 updateSelectionBox(currentMesh);
                 createResizeHandles(currentMesh);
                 attachToControls(currentMesh);
@@ -496,16 +494,7 @@
             const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-            if (isDragging && !isResizing && !isRotating) {
-                const deltaMove = {
-                    x: event.clientX - previousMousePosition.x,
-                    y: event.clientY - previousMousePosition.y
-                };
-                currentMesh.position.x += deltaMove.x * 0.01;
-                currentMesh.position.y -= deltaMove.y * 0.01;
-                updateSelectionBox(currentMesh);
-                updateResizeHandles(currentMesh);
-            } else if (isRotating) {
+            if (isRotating) {
                 const deltaX = event.clientX - previousMousePosition.x;
                 currentMesh.rotation.z = initialRotation + deltaX * 0.01;
                 updateSelectionBox(currentMesh);
@@ -877,7 +866,6 @@
             scenePanel.innerHTML = objects.map((obj, index) => `
                 <div class="scene-item">
                     <span>${obj.userData.type} ${index + 1}</span>
-                    <button onclick="selectObject(${index})">선택</button>
                     <button onclick="deleteObject(${index})">삭제</button>
                 </div>
             `).join('');
